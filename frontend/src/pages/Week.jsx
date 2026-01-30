@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import BlockModal from "../components/BlockModal";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // UI 파라미터(여기만 바꾸면 전체가 바뀜)
-const START_HOUR = 8;          // 그리드 시작 시간
-const END_HOUR = 20;           // 그리드 끝 시간
-const PX_PER_MIN = 1.2;        // 1분당 픽셀 (1.2면 60분=72px)
+const START_HOUR = 0;          // 그리드 시작 시간
+const END_HOUR = 24;           // 그리드 끝 시간
+const PX_PER_MIN = 1.6;        // 1분당 픽셀 (1.2면 60분=72px)
 const DAY_COL_WIDTH = 160;     // day column 폭(중앙은 flex라 실제로는 min 폭)
 
 function startOfWeekMonday(d) {
@@ -36,10 +36,76 @@ function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-export default function WeekV2() {
+// ---- click-to-create helpers ----
+const SLOT_MIN = 30;
+function snapMinute(min) {
+  return Math.round(min / SLOT_MIN) * SLOT_MIN;
+}
+function toLocalISOStringFromParts(baseDate, minutes) {
+  const d = new Date(baseDate);
+  d.setMinutes(d.getMinutes() + minutes);
+  return d.toISOString();
+}
+
+// ---- overlap layout (cluster-aware) ----
+function layoutOverlaps(blocks) {
+  // Assign each block a column index (_col) and a column count for its overlap cluster (_colCount).
+  // This prevents unrelated non-overlapping blocks from being squeezed.
+  const items = [...blocks].sort((a, b) => a._start - b._start);
+
+  const active = []; // { end: Date, col: number }
+  let cluster = []; // blocks in current overlap cluster (references to placed objects)
+  let clusterMaxCols = 1;
+
+  const placed = [];
+
+  const nextFreeCol = () => {
+    const used = new Set(active.map((x) => x.col));
+    let c = 0;
+    while (used.has(c)) c += 1;
+    return c;
+  };
+
+  const finalizeCluster = () => {
+    if (cluster.length === 0) return;
+    const maxCols = Math.max(1, clusterMaxCols);
+    for (const b of cluster) b._colCount = maxCols;
+    cluster = [];
+    clusterMaxCols = 1;
+  };
+
+  for (const b of items) {
+    // Remove ended active blocks
+    for (let i = active.length - 1; i >= 0; i--) {
+      if (active[i].end <= b._start) active.splice(i, 1);
+    }
+
+    // If no active blocks remain, the previous overlap cluster ended.
+    if (active.length === 0) {
+      finalizeCluster();
+    }
+
+    const col = nextFreeCol();
+    const placedBlock = { ...b, _col: col, _colCount: 1 };
+    placed.push(placedBlock);
+
+    active.push({ end: b._end, col });
+
+    cluster.push(placedBlock);
+    clusterMaxCols = Math.max(clusterMaxCols, active.length);
+  }
+
+  // Finalize last cluster
+  finalizeCluster();
+
+  return placed;
+}
+
+export default function Week() {
   const [me, setMe] = useState(null);
   const [blocks, setBlocks] = useState([]);
   const [err, setErr] = useState("");
+  const [nowTick, setNowTick] = useState(Date.now());
 
   // modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -47,6 +113,9 @@ export default function WeekV2() {
   const [selected, setSelected] = useState(null);
 
   const [weekOffset, setWeekOffset] = useState(0);
+
+  const gridWrapRef = useRef(null);
+  const autoScrollDoneRef = useRef(false);
 
   const weekStart = useMemo(() => {
     const base = startOfWeekMonday(new Date());
@@ -76,19 +145,26 @@ export default function WeekV2() {
   };
 
   useEffect(() => { load(); }, [weekStart.getTime()]); // 주 이동 시 reload
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    autoScrollDoneRef.current = false;
+  }, [weekStart.getTime()]);
 
   // Up Next: 지금 기준으로 가장 가까운 미래 일정 3개
   const upNext = useMemo(() => {
-    const now = new Date();
+    const now = new Date(nowTick);
     return [...blocks]
       .map(b => ({...b, _start: new Date(b.start_at), _end: new Date(b.end_at)}))
       .filter(b => b._end > now)
       .sort((a, b) => a._start - b._start)
       .slice(0, 3);
-  }, [blocks]);
+  }, [blocks, nowTick]);
 
-  const openCreate = () => {
-    setSelected(null);
+  const openCreate = (preset = null) => {
+    setSelected(preset);
     setModalMode("create");
     setModalOpen(true);
   };
@@ -105,12 +181,30 @@ export default function WeekV2() {
   const logout = async () => { await api("/auth/logout", { method: "POST" }); window.location.href = "/"; };
 
   const todayLine = useMemo(() => {
-    const now = new Date();
+    const now = new Date(nowTick);
     const nowMin = minutesFromDayStart(now);
     if (nowMin < gridStartMin || nowMin > gridEndMin) return null;
     const top = (nowMin - gridStartMin) * PX_PER_MIN;
     return { top };
-  }, [weekStart.getTime()]);
+  }, [nowTick]);
+
+  const today = new Date(nowTick);
+
+  useEffect(() => {
+    const el = gridWrapRef.current;
+    if (!el || autoScrollDoneRef.current) return;
+
+    // Only auto-scroll when the current date is within the displayed week.
+    const now = new Date(nowTick);
+    if (now < weekStart || now >= weekEnd) return;
+
+    if (!todayLine) return;
+
+    // Scroll so "now" line is a bit below the sticky header.
+    const target = Math.max(0, todayLine.top - 140);
+    el.scrollTop = target;
+    autoScrollDoneRef.current = true;
+  }, [weekStart.getTime(), weekEnd.getTime(), todayLine, nowTick]);
 
   return (
     <div style={styles.shell}>
@@ -141,20 +235,20 @@ export default function WeekV2() {
             <button style={styles.btn} onClick={() => setWeekOffset(x => x - 1)}>◀</button>
             <button style={styles.btn} onClick={() => setWeekOffset(0)}>Today</button>
             <button style={styles.btn} onClick={() => setWeekOffset(x => x + 1)}>▶</button>
-            <button style={styles.btnPrimary} onClick={openCreate}>+ Add</button>
+            <button style={styles.btnPrimary} onClick={() => openCreate(null)}>+ Add</button>
             <button style={styles.btn} onClick={logout}>Logout</button>
           </div>
         </div>
 
         {/* Grid */}
-        <div style={styles.gridWrap}>
+        <div style={styles.gridWrap} ref={gridWrapRef}>
           {/* Day header row */}
           <div style={styles.dayHeaderRow}>
             <div style={{ width: 64 }} />
             <div style={styles.dayHeaderCols}>
               {DAYS.map((d, idx) => {
                 const date = addDays(weekStart, idx);
-                const isToday = isSameDay(date, new Date());
+                const isToday = isSameDay(date, today);
                 return (
                   <div key={d} style={{...styles.dayHeaderCell, ...(isToday ? styles.dayHeaderToday : {})}}>
                     <div style={{ fontWeight: 600 }}>{d}</div>
@@ -184,15 +278,37 @@ export default function WeekV2() {
             <div style={{ ...styles.dayCols, height: gridHeight }}>
               {DAYS.map((_, dayIndex) => {
                 const dayDate = addDays(weekStart, dayIndex);
-                const dayStart = new Date(dayDate); dayStart.setHours(0,0,0,0);
 
                 // 이 day의 블록만
                 const dayBlocks = blocks
                   .map(b => ({ ...b, _start: new Date(b.start_at), _end: new Date(b.end_at) }))
                   .filter(b => isSameDay(b._start, dayDate)); // MVP: 하루를 넘는 일정은 일단 제외(다음 단계에서 split)
 
+                const laidOut = layoutOverlaps(dayBlocks);
+
                 return (
-                  <div key={dayIndex} style={styles.dayCol}>
+                  <div
+                    key={dayIndex}
+                    style={styles.dayCol}
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const y = e.clientY - rect.top;
+
+                      const rawMin = gridStartMin + y / PX_PER_MIN;
+                      const startMin = snapMinute(rawMin);
+                      const endMin = startMin + 60; // default 1 hour
+
+                      const dayStart = new Date(dayDate);
+                      dayStart.setHours(0, 0, 0, 0);
+
+                      const preset = {
+                        start_at: toLocalISOStringFromParts(dayStart, startMin),
+                        end_at: toLocalISOStringFromParts(dayStart, endMin),
+                      };
+
+                      openCreate(preset);
+                    }}
+                  >
                     {/* hour lines */}
                     {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
                       <div
@@ -209,7 +325,7 @@ export default function WeekV2() {
                     ))}
 
                     {/* Today line (해당 요일 컬럼에만 표시) */}
-                    {todayLine && isSameDay(dayDate, new Date()) && (
+                    {todayLine && isSameDay(dayDate, today) && (
                       <div style={{
                         position: "absolute",
                         top: todayLine.top,
@@ -221,21 +337,28 @@ export default function WeekV2() {
                     )}
 
                     {/* blocks */}
-                    {dayBlocks.map((b) => {
+                    {laidOut.map((b) => {
                       const startMin = minutesFromDayStart(b._start);
                       const endMin = minutesFromDayStart(b._end);
                       const top = (clamp(startMin, gridStartMin, gridEndMin) - gridStartMin) * PX_PER_MIN;
                       const height = (clamp(endMin, gridStartMin, gridEndMin) - clamp(startMin, gridStartMin, gridEndMin)) * PX_PER_MIN;
 
+                      const gap = 6;
+                      const widthPct = 100 / (b._colCount || 1);
+                      const leftPct = (b._col || 0) * widthPct;
+
                       return (
                         <div
                           key={b.id}
-                          onClick={() => openEdit(b)}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            openEdit(b);
+                          }}
                           style={{
                             position: "absolute",
                             top,
-                            left: 8,
-                            right: 8,
+                            left: `calc(${leftPct}% + ${gap}px)`,
+                            width: `calc(${widthPct}% - ${gap * 2}px)`,
                             height: Math.max(24, height),
                             borderRadius: 10,
                             padding: 10,
@@ -293,7 +416,7 @@ export default function WeekV2() {
         <div style={styles.card}>
           <div style={{ fontWeight: 700, marginBottom: 10 }}>Up Next</div>
           {upNext.length === 0 ? (
-            <div style={{ fontSize: 13, opacity: 0.7 }}>예정된 일정이 없어요.</div>
+            <div style={{ fontSize: 13, opacity: 0.7 }}>예정된 일정이 없어요.</div> 
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
               {upNext.map((b) => (

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 function toInputValue(dt) {
-  // datetime-local input 형식: YYYY-MM-DDTHH:mm
+  // datetime-local input format: YYYY-MM-DDTHH:mm
   const pad = (n) => String(n).padStart(2, "0");
   const y = dt.getFullYear();
   const m = pad(dt.getMonth() + 1);
@@ -14,7 +14,7 @@ function toInputValue(dt) {
 export default function BlockModal({
   open,
   mode, // "create" | "edit"
-  initialBlock, // edit일 때 {id,title,note,start_at,end_at}
+  initialBlock, // may contain {id,title,note,start_at,end_at} or only {start_at,end_at} for preset
   onClose,
   onSubmit, // (payload) => Promise<void>
   onDelete, // () => Promise<void> (edit only)
@@ -25,18 +25,36 @@ export default function BlockModal({
   const [endAt, setEndAt] = useState(toInputValue(new Date(Date.now() + 30 * 60 * 1000)));
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const startDate = new Date(startAt);
+  const endDate = new Date(endAt);
+  const timeInvalid = Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || startDate >= endDate;
+  const timeError = timeInvalid ? "끝 시간은 시작 시간 이후여야 합니다." : "";
+  const isSubmitDisabled = loading || !title.trim() || timeInvalid;
 
   useEffect(() => {
     if (!open) return;
     setErr("");
+
+    const hasPresetTimes = initialBlock?.start_at && initialBlock?.end_at;
+
+    // edit mode: fill everything from initialBlock
     if (mode === "edit" && initialBlock) {
       setTitle(initialBlock.title || "");
       setNote(initialBlock.note || "");
       setStartAt(toInputValue(new Date(initialBlock.start_at)));
       setEndAt(toInputValue(new Date(initialBlock.end_at)));
+      return;
+    }
+
+    // create mode
+    setTitle("");
+    setNote("");
+
+    // If caller provided a preset time window, use it.
+    if (hasPresetTimes) {
+      setStartAt(toInputValue(new Date(initialBlock.start_at)));
+      setEndAt(toInputValue(new Date(initialBlock.end_at)));
     } else {
-      setTitle("");
-      setNote("");
       const now = new Date();
       setStartAt(toInputValue(now));
       setEndAt(toInputValue(new Date(now.getTime() + 30 * 60 * 1000)));
@@ -46,11 +64,15 @@ export default function BlockModal({
   if (!open) return null;
 
   const submit = async () => {
+    if (timeInvalid) {
+      setErr("");
+      return;
+    }
     setLoading(true);
     setErr("");
     try {
       const payload = {
-        title,
+        title: title.trim(),
         note: note || null,
         start_at: new Date(startAt).toISOString(),
         end_at: new Date(endAt).toISOString(),
@@ -58,7 +80,7 @@ export default function BlockModal({
       await onSubmit(payload);
       onClose();
     } catch (e) {
-      setErr(String(e.message || e));
+      setErr(String(e?.message || e));
     } finally {
       setLoading(false);
     }
@@ -72,7 +94,7 @@ export default function BlockModal({
       await onDelete();
       onClose();
     } catch (e) {
-      setErr(String(e.message || e));
+      setErr(String(e?.message || e));
     } finally {
       setLoading(false);
     }
@@ -99,23 +121,45 @@ export default function BlockModal({
         <h2 style={{ marginTop: 0 }}>{mode === "edit" ? "일정 편집" : "일정 생성"}</h2>
 
         <label>제목</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: "100%" }} />
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          style={{ width: "100%" }}
+          placeholder="예: 운동, 회의, 공부"
+        />
 
         <div style={{ height: 10 }} />
 
         <label>메모</label>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} style={{ width: "100%" }} />
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          style={{ width: "100%" }}
+          placeholder="옵션"
+        />
 
         <div style={{ height: 10 }} />
 
         <label>시작</label>
-        <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} style={{ width: "100%" }} />
+        <input
+          type="datetime-local"
+          value={startAt}
+          onChange={(e) => setStartAt(e.target.value)}
+          style={{ width: "100%" }}
+        />
 
         <div style={{ height: 10 }} />
 
         <label>끝</label>
-        <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} style={{ width: "100%" }} />
+        <input
+          type="datetime-local"
+          value={endAt}
+          onChange={(e) => setEndAt(e.target.value)}
+          min={startAt}
+          style={{ width: "100%" }}
+        />
 
+        {timeError && <p style={{ color: "crimson" }}>{timeError}</p>}
         {err && <p style={{ color: "crimson" }}>{err}</p>}
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
@@ -125,7 +169,7 @@ export default function BlockModal({
               삭제
             </button>
           )}
-          <button onClick={submit} disabled={loading || !title.trim()}>
+          <button onClick={submit} disabled={isSubmitDisabled}>
             {mode === "edit" ? "저장" : "생성"}
           </button>
         </div>
