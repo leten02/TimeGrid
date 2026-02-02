@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import BlockModal from "../components/BlockModal";
 
@@ -147,9 +148,11 @@ export default function Week() {
   const dragSelectRef = useRef(null);
   const dragStateRef = useRef(null);
   const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
   const [messages, setMessages] = useState([
     { id: "welcome", role: "assistant", text: "안녕하세요! 스케줄 설정을 도와드릴게요. 어떤 도움이 필요하신가요?" },
   ]);
+  const navigate = useNavigate();
 
   // modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -226,6 +229,21 @@ export default function Week() {
   }, [blocks, nowTick]);
 
   const getDayKey = (dayIndex) => dateKey(addDays(weekStart, dayIndex));
+  const getBlockedRanges = useCallback((dayIndex) => {
+    const dayKey = getDayKey(dayIndex);
+    const ranges = [];
+    let start = null;
+    for (let slot = 0; slot < blocksPerDay; slot += 1) {
+      const isBlocked = blockedSlots.has(`${dayKey}|${slot}`);
+      if (isBlocked && start === null) start = slot;
+      if (!isBlocked && start !== null) {
+        ranges.push({ startSlot: start, endSlot: slot - 1 });
+        start = null;
+      }
+    }
+    if (start !== null) ranges.push({ startSlot: start, endSlot: blocksPerDay - 1 });
+    return ranges;
+  }, [blockedSlots, blocksPerDay, getDayKey]);
   const slotIndexFromClientY = useCallback((clientY, rect) => {
     const y = clamp(clientY - rect.top, 0, rect.height - 1);
     const minutes = gridStartMin + y / PX_PER_MIN;
@@ -300,24 +318,35 @@ export default function Week() {
   const updateBlock = async (payload) => { await api(`/blocks/${selected.id}`, { method: "PATCH", body: JSON.stringify(payload) }); await load(); };
   const deleteBlock = async () => { await api(`/blocks/${selected.id}`, { method: "DELETE" }); await load(); };
 
-  const logout = async () => { await api("/auth/logout", { method: "POST" }); window.location.href = "/"; };
-
-  const sendChat = () => {
+  const sendChat = async () => {
     const text = chatInput.trim();
-    if (!text) return;
+    if (!text || chatLoading) return;
     const ts = Date.now();
-    setMessages((prev) => [...prev, { id: `u-${ts}`, role: "user", text }]);
+    const nextMessages = [...messages, { id: `u-${ts}`, role: "user", text }];
+    setMessages(nextMessages);
     setChatInput("");
-    window.setTimeout(() => {
+    setChatLoading(true);
+
+    try {
+      const payload = {
+        messages: nextMessages.map(({ role, text: msgText }) => ({ role, text: msgText })),
+      };
+      const res = await api("/ai/chat", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
       setMessages((prev) => [
         ...prev,
-        {
-          id: `a-${Date.now()}`,
-          role: "assistant",
-          text: "좋아요! 차단된 시간을 제외하고 가능한 시간대를 기반으로 스케줄을 제안해드릴게요.",
-        },
+        { id: `a-${Date.now()}`, role: "assistant", text: res?.reply || "응답을 가져오지 못했어요." },
       ]);
-    }, 400);
+    } catch (e) {
+      setMessages((prev) => [
+        ...prev,
+        { id: `a-${Date.now()}`, role: "assistant", text: "현재 응답을 받을 수 없어요. 잠시 후 다시 시도해주세요." },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
   };
 
   const handleChatKeyDown = (e) => {
@@ -388,10 +417,10 @@ export default function Week() {
           <span>TimeGrid</span>
         </div>
         <nav style={styles.nav}>
-          <div style={{...styles.navItem, ...styles.navItemActive}}>타임테이블</div>
+          <div style={{...styles.navItem, ...styles.navItemActive}} onClick={() => navigate("/week")}>타임테이블</div>
           <div style={styles.navItem}>인벤토리</div>
           <div style={styles.navItem}>리포트</div>
-          <div style={styles.navItem}>설정</div>
+          <div style={styles.navItem} onClick={() => navigate("/settings")}>설정</div>
         </nav>
         <div style={{ marginTop: "auto", opacity: 0.75, fontSize: 12 }}>
           {me ? `${me.name || ""}` : ""}
@@ -412,7 +441,6 @@ export default function Week() {
             <button style={styles.btnGhost} className="tg-pill" onClick={() => setWeekOffset(0)}>오늘</button>
             <button style={styles.btnGhost} className="tg-pill" onClick={() => setWeekOffset(x => x + 1)}>▶</button>
             <button style={styles.btnPrimary} className="tg-pill" onClick={() => openCreate(null)}>+ 추가</button>
-            <button style={styles.btnGhost} className="tg-pill" onClick={logout}>로그아웃</button>
           </div>
         </div>
 
@@ -507,20 +535,16 @@ export default function Week() {
                     ))}
 
                     {/* Blocked slots */}
-                    {Array.from({ length: blocksPerDay }).map((_, slot) => {
-                      const key = `${getDayKey(dayIndex)}|${slot}`;
-                      if (!blockedSlots.has(key)) return null;
-                      return (
-                        <div
-                          key={key}
-                          style={{
-                            ...styles.blockedSlot,
-                            top: slot * BLOCK_MIN * PX_PER_MIN,
-                            height: BLOCK_MIN * PX_PER_MIN,
-                          }}
-                        />
-                      );
-                    })}
+                    {getBlockedRanges(dayIndex).map((range) => (
+                      <div
+                        key={`blocked-${dayIndex}-${range.startSlot}-${range.endSlot}`}
+                        style={{
+                          ...styles.blockedSlot,
+                          top: range.startSlot * BLOCK_MIN * PX_PER_MIN,
+                          height: (range.endSlot - range.startSlot + 1) * BLOCK_MIN * PX_PER_MIN,
+                        }}
+                      />
+                    ))}
 
                     {/* Drag selection preview */}
                     {dragSelect && dragSelect.dayIndex === dayIndex && (
@@ -629,7 +653,9 @@ export default function Week() {
         <div style={styles.chatCard} className="tg-card">
           <div style={styles.chatHeader}>
             <span>AI 스케줄 도우미</span>
-            <span style={styles.chatHeaderBadge}>{blockMode ? "차단 모드 ON" : "대기 중"}</span>
+            <span style={styles.chatHeaderBadge}>
+              {chatLoading ? "응답 중" : blockMode ? "차단 모드 ON" : "대기 중"}
+            </span>
           </div>
           <div style={styles.chatBody} ref={chatScrollRef}>
             {messages.map((m) => (
@@ -649,8 +675,16 @@ export default function Week() {
               onKeyDown={handleChatKeyDown}
               placeholder="AI에게 스케줄 관련 질문을 하세요..."
               rows={3}
+              disabled={chatLoading}
             />
-            <button style={styles.chatSend} className="tg-pill" onClick={sendChat}>전송</button>
+            <button
+              style={{ ...styles.chatSend, ...(chatLoading ? styles.chatSendDisabled : {}) }}
+              className="tg-pill"
+              onClick={sendChat}
+              disabled={chatLoading}
+            >
+              {chatLoading ? "응답 중" : "전송"}
+            </button>
           </div>
           <div style={styles.chatHint}>Enter 전송 · Shift+Enter 줄바꿈</div>
         </div>
@@ -957,6 +991,10 @@ const styles = {
     color: "white",
     fontWeight: 700,
     cursor: "pointer",
+  },
+  chatSendDisabled: {
+    opacity: 0.65,
+    cursor: "not-allowed",
   },
   chatHint: {
     fontSize: 11,

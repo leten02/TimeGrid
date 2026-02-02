@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+import requests
 
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from datetime import datetime
 from sqlalchemy import select
 from app.models.schedule_block import ScheduleBlock
 from app.schemas.schedule_block import BlockCreate, BlockUpdate, BlockOut
+from app.schemas.ai import ChatRequest, ChatResponse
 router = APIRouter()
 
 @router.get("/health")
@@ -220,6 +222,52 @@ def delete_block(
     db.delete(block)
     db.commit()
     return {"ok": True}
+
+@router.post("/ai/chat", response_model=ChatResponse)
+def ai_chat(
+    payload: ChatRequest,
+    user: User = Depends(get_current_user),
+):
+    if not settings.GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="gemini api key not configured")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent"
+    contents = []
+    for msg in payload.messages:
+        role = "user" if msg.role == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": msg.text}]})
+
+    body = {"contents": contents}
+    if settings.GEMINI_SYSTEM_PROMPT:
+        body["system_instruction"] = {"parts": [{"text": settings.GEMINI_SYSTEM_PROMPT}]}
+
+    try:
+        resp = requests.post(
+            url,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": settings.GEMINI_API_KEY,
+            },
+            json=body,
+            timeout=60,
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"gemini request failed: {exc}") from exc
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"gemini error: {resp.text}")
+
+    data = resp.json()
+    candidates = data.get("candidates", [])
+    if not candidates:
+        raise HTTPException(status_code=502, detail="gemini returned no candidates")
+
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "".join(part.get("text", "") for part in parts).strip()
+    if not text:
+        raise HTTPException(status_code=502, detail="gemini returned empty text")
+
+    return {"reply": text}
 
 @router.post("/auth/logout")
 def logout(response: Response):
