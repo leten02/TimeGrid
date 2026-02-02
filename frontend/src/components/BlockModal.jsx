@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 function toInputValue(dt) {
   // datetime-local input format: YYYY-MM-DDTHH:mm
@@ -100,80 +101,208 @@ export default function BlockModal({
     }
   };
 
-  return (
+  const content = (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.35)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-        zIndex: 50,
-      }}
+      style={styles.overlay}
       onClick={onClose}
     >
+      <style>{`
+        .tg-modal-card { backdrop-filter: blur(18px); }
+        .tg-input, .tg-textarea {
+          width: 100%;
+          border: 1px solid rgba(15,23,42,0.12);
+          background: rgba(255,255,255,0.9);
+          border-radius: 12px;
+          padding: 10px 12px;
+          font-size: 13px;
+          color: #0f172a;
+          min-width: 0;
+          max-width: 100%;
+          transition: border 0.15s ease, box-shadow 0.15s ease;
+        }
+        .tg-textarea { min-height: 90px; resize: vertical; }
+        .tg-input:focus, .tg-textarea:focus {
+          outline: none;
+          border-color: rgba(59,130,246,0.5);
+          box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+        }
+        .tg-btn {
+          border-radius: 999px;
+          padding: 8px 14px;
+          font-weight: 700;
+          cursor: pointer;
+          border: 1px solid rgba(15,23,42,0.12);
+          background: rgba(255,255,255,0.85);
+          color: #0f172a;
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .tg-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(15,23,42,0.12); }
+        .tg-btn-primary {
+          background: linear-gradient(135deg, #0f172a, #1f2937);
+          color: white;
+          border-color: rgba(15,23,42,0.3);
+        }
+        .tg-btn-danger {
+          background: linear-gradient(135deg, #ff453a, #ff3b30);
+          color: white;
+          border-color: rgba(255,59,48,0.4);
+        }
+        .tg-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          box-shadow: none;
+          transform: none;
+        }
+        .tg-time-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+        .tg-time-grid > div { min-width: 0; }
+        @media (max-width: 640px) {
+          .tg-time-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
       <div
-        style={{ width: 420, background: "white", borderRadius: 12, padding: 16 }}
+        style={styles.card}
+        className="tg-modal-card"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
       >
-        <h2 style={{ marginTop: 0 }}>{mode === "edit" ? "일정 편집" : "일정 생성"}</h2>
+        <div style={styles.header}>
+          <div>
+            <div style={styles.title}>{mode === "edit" ? "일정 편집" : "일정 생성"}</div>
+            <div style={styles.subtitle}>시간과 내용을 입력하면 바로 반영됩니다.</div>
+          </div>
+          <div style={styles.badge}>{mode === "edit" ? "편집" : "새 일정"}</div>
+        </div>
 
-        <label>제목</label>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          style={{ width: "100%" }}
-          placeholder="예: 운동, 회의, 공부"
-        />
+        <div style={styles.form}>
+          <div style={styles.field}>
+            <label style={styles.label}>제목</label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="tg-input"
+              placeholder="예: 운동, 회의, 공부"
+            />
+          </div>
 
-        <div style={{ height: 10 }} />
+          <div style={styles.field}>
+            <label style={styles.label}>메모</label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="tg-textarea"
+              placeholder="옵션"
+            />
+          </div>
 
-        <label>메모</label>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          style={{ width: "100%" }}
-          placeholder="옵션"
-        />
+          <div className="tg-time-grid">
+            <div style={styles.field}>
+              <label style={styles.label}>시작</label>
+              <input
+                type="datetime-local"
+                value={startAt}
+                onChange={(e) => setStartAt(e.target.value)}
+                className="tg-input"
+              />
+            </div>
 
-        <div style={{ height: 10 }} />
+            <div style={styles.field}>
+              <label style={styles.label}>끝</label>
+              <input
+                type="datetime-local"
+                value={endAt}
+                onChange={(e) => setEndAt(e.target.value)}
+                min={startAt}
+                className="tg-input"
+              />
+            </div>
+          </div>
+        </div>
 
-        <label>시작</label>
-        <input
-          type="datetime-local"
-          value={startAt}
-          onChange={(e) => setStartAt(e.target.value)}
-          style={{ width: "100%" }}
-        />
+        {timeError && <p style={styles.error}>{timeError}</p>}
+        {err && <p style={styles.error}>{err}</p>}
 
-        <div style={{ height: 10 }} />
-
-        <label>끝</label>
-        <input
-          type="datetime-local"
-          value={endAt}
-          onChange={(e) => setEndAt(e.target.value)}
-          min={startAt}
-          style={{ width: "100%" }}
-        />
-
-        {timeError && <p style={{ color: "crimson" }}>{timeError}</p>}
-        {err && <p style={{ color: "crimson" }}>{err}</p>}
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-          <button onClick={onClose} disabled={loading}>닫기</button>
+        <div style={styles.actions}>
+          <button onClick={onClose} disabled={loading} className="tg-btn">닫기</button>
           {mode === "edit" && (
-            <button onClick={del} disabled={loading} style={{ background: "crimson", color: "white" }}>
+            <button onClick={del} disabled={loading} className="tg-btn tg-btn-danger">
               삭제
             </button>
           )}
-          <button onClick={submit} disabled={isSubmitDisabled}>
+          <button onClick={submit} disabled={isSubmitDisabled} className="tg-btn tg-btn-primary">
             {mode === "edit" ? "저장" : "생성"}
           </button>
         </div>
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return content;
+  return createPortal(content, document.body);
 }
+
+const styles = {
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15,23,42,0.35)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    zIndex: 10000,
+  },
+  card: {
+    width: 520,
+    maxWidth: "92vw",
+    maxHeight: "90vh",
+    overflowX: "hidden",
+    overflowY: "auto",
+    background: "rgba(255,255,255,0.92)",
+    borderRadius: 24,
+    padding: 22,
+    border: "1px solid rgba(15,23,42,0.08)",
+    boxShadow: "0 24px 60px rgba(15,23,42,0.2)",
+    fontFamily: "'Pretendard','SF Pro Display','Apple SD Gothic Neo','Noto Sans KR',sans-serif",
+    color: "#0f172a",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  title: { fontSize: 22, fontWeight: 800, letterSpacing: "-0.3px" },
+  subtitle: { fontSize: 12, opacity: 0.7, marginTop: 4 },
+  badge: {
+    fontSize: 11,
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "rgba(15,23,42,0.08)",
+    fontWeight: 700,
+  },
+  form: {
+    display: "grid",
+    gap: 14,
+  },
+  field: {
+    display: "grid",
+    gap: 8,
+    minWidth: 0,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  error: {
+    color: "#dc2626",
+    fontSize: 12,
+    marginTop: 8,
+  },
+  actions: {
+    display: "flex",
+    gap: 8,
+    justifyContent: "flex-end",
+    marginTop: 16,
+  },
+};
