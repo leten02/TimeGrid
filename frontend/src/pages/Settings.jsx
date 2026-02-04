@@ -1,33 +1,24 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import Sidebar from "../components/Sidebar";
 import { api } from "../lib/api";
+import { useSettings } from "../lib/useSettings";
 
-function Toggle({ value, onChange }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!value)}
-      aria-pressed={value}
-      style={{ ...styles.toggle, ...(value ? styles.toggleOn : {}) }}
-    >
-      <span style={{ ...styles.toggleKnob, ...(value ? styles.toggleKnobOn : {}) }} />
-    </button>
-  );
-}
+const Toggle = ({ value, onChange }) => (
+  <button
+    type="button"
+    onClick={() => onChange(!value)}
+    aria-pressed={value}
+    style={{ ...styles.toggle, ...(value ? styles.toggleOn : {}) }}
+  >
+    <span style={{ ...styles.toggleKnob, ...(value ? styles.toggleKnobOn : {}) }} />
+  </button>
+);
 
 export default function Settings() {
-  const navigate = useNavigate();
-  const [weekStart, setWeekStart] = useState("sunday");
-  const [defaultBlock, setDefaultBlock] = useState("60");
-  const [timezone, setTimezone] = useState("Asia/Seoul");
-  const [autoScroll, setAutoScroll] = useState(true);
-  const [blockRespect, setBlockRespect] = useState(true);
-  const [notifyBefore, setNotifyBefore] = useState(true);
-  const [dailySummary, setDailySummary] = useState(false);
-  const [weeklyReport, setWeeklyReport] = useState(true);
-  const [aiAssist, setAiAssist] = useState(true);
-  const [aiPriority, setAiPriority] = useState(false);
-  const [localSave, setLocalSave] = useState(true);
+  const { settings, loading, error, updateSettings } = useSettings();
+
+  const applySetting = (patch) => {
+    updateSettings(patch).catch(() => {});
+  };
 
   const logout = async () => {
     await api("/auth/logout", { method: "POST" });
@@ -36,125 +27,213 @@ export default function Settings() {
 
   return (
     <div style={styles.shell}>
-      <div style={styles.shellBackdrop} aria-hidden="true" />
-
-      <aside style={styles.sidebar}>
-        <div style={styles.brand}>
-          <img
-            src="/brand/timegrid_mark.png"
-            alt="TimeGrid"
-            style={styles.brandLogo}
-          />
-          <span>TimeGrid</span>
-        </div>
-        <nav style={styles.nav}>
-          <div style={styles.navItem} onClick={() => navigate("/week")}>타임테이블</div>
-          <div style={styles.navItem}>인벤토리</div>
-          <div style={styles.navItem}>리포트</div>
-          <div style={{ ...styles.navItem, ...styles.navItemActive }}>설정</div>
-        </nav>
-      </aside>
-
+      <Sidebar />
       <main style={styles.main}>
         <div style={styles.header}>
           <div>
             <div style={styles.hTitle}>설정</div>
-            <div style={styles.hSub}>TimeGrid 환경과 기본 동작을 설정합니다.</div>
+            <div style={styles.hSub}>앱 환경과 AI 스케줄링 기본값을 설정합니다.</div>
           </div>
         </div>
+        {error && <div style={styles.error}>{error}</div>}
 
-        <div style={styles.settingsGrid}>
-          <section style={styles.card}>
-            <div style={styles.cardTitle}>프로필</div>
-            <div style={styles.fieldRow}>
-              <div style={styles.field}>
-                <label style={styles.label}>이름</label>
-                <input style={styles.input} placeholder="이름" />
-              </div>
-              <div style={styles.field}>
-                <label style={styles.label}>이메일</label>
-                <input style={styles.input} placeholder="email@example.com" />
-              </div>
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>Profile</div>
+          <div style={styles.profileRow}>
+            <div style={styles.avatar}>TG</div>
+            <div>
+              <div style={styles.profileName}>TimeGrid User</div>
+              <div style={styles.profileEmail}>user@timegrid.app</div>
             </div>
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>Timetable Appearance</div>
+          <div style={styles.fieldRow}>
             <div style={styles.field}>
-              <label style={styles.label}>시간대</label>
-              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} style={styles.select}>
-                <option value="Asia/Seoul">Asia/Seoul (KST)</option>
-                <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
-                <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
+              <label style={styles.label}>Week Start Day</label>
+              <select
+                style={styles.select}
+                value={settings.week_start_day}
+                onChange={(e) => applySetting({ week_start_day: e.target.value })}
+                disabled={loading}
+              >
+                <option value="sunday">Sunday</option>
+                <option value="monday">Monday</option>
               </select>
             </div>
-          </section>
-
-          <section style={styles.card}>
-            <div style={styles.cardTitle}>일정 기본값</div>
-            <div style={styles.fieldRow}>
-              <div style={styles.field}>
-                <label style={styles.label}>주 시작 요일</label>
-                <select value={weekStart} onChange={(e) => setWeekStart(e.target.value)} style={styles.select}>
-                  <option value="sunday">일요일</option>
-                  <option value="monday">월요일</option>
-                </select>
-              </div>
-              <div style={styles.field}>
-                <label style={styles.label}>기본 일정 길이</label>
-                <select value={defaultBlock} onChange={(e) => setDefaultBlock(e.target.value)} style={styles.select}>
-                  <option value="30">30분</option>
-                  <option value="60">60분</option>
-                  <option value="90">90분</option>
-                </select>
-              </div>
-            </div>
-            <div style={styles.toggleRow}>
-              <span style={styles.toggleLabel}>오늘 버튼 자동 스크롤</span>
-              <Toggle value={autoScroll} onChange={setAutoScroll} />
-            </div>
-            <div style={styles.toggleRow}>
-              <span style={styles.toggleLabel}>차단된 시간 우선 적용</span>
-              <Toggle value={blockRespect} onChange={setBlockRespect} />
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <div style={styles.cardTitle}>알림</div>
-            <div style={styles.toggleRow}>
-              <span style={styles.toggleLabel}>일정 시작 10분 전 알림</span>
-              <Toggle value={notifyBefore} onChange={setNotifyBefore} />
-            </div>
-            <div style={styles.toggleRow}>
-              <span style={styles.toggleLabel}>하루 요약 알림</span>
-              <Toggle value={dailySummary} onChange={setDailySummary} />
-            </div>
-            <div style={styles.toggleRow}>
-              <span style={styles.toggleLabel}>주간 리포트 알림</span>
-              <Toggle value={weeklyReport} onChange={setWeeklyReport} />
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <div style={styles.cardTitle}>AI 스케줄 도우미</div>
-            <div style={styles.toggleRow}>
-              <span style={styles.toggleLabel}>AI 자동 제안 사용</span>
-              <Toggle value={aiAssist} onChange={setAiAssist} />
-            </div>
-            <div style={styles.toggleRow}>
-              <span style={styles.toggleLabel}>우선순위 기반 추천</span>
-              <Toggle value={aiPriority} onChange={setAiPriority} />
-            </div>
-          </section>
-
-          <section style={styles.card}>
-            <div style={styles.cardTitle}>데이터</div>
-            <div style={styles.toggleRow}>
-              <span style={styles.toggleLabel}>로컬 저장 사용</span>
-              <Toggle value={localSave} onChange={setLocalSave} />
+            <div style={styles.field}>
+              <label style={styles.label}>Compact Mode</label>
+              <Toggle value={settings.compact_mode} onChange={(value) => applySetting({ compact_mode: value })} />
             </div>
             <div style={styles.field}>
-              <label style={styles.label}>캘린더 연동</label>
-              <button type="button" style={styles.ghostButton}>Google Calendar 연동 준비중</button>
+              <label style={styles.label}>Grid Start Hour</label>
+              <input
+                type="time"
+                style={styles.input}
+                value={settings.grid_start}
+                onChange={(e) => applySetting({ grid_start: e.target.value })}
+                disabled={loading}
+              />
             </div>
-          </section>
-        </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Grid End Hour</label>
+              <input
+                type="time"
+                style={styles.input}
+                value={settings.grid_end}
+                onChange={(e) => applySetting({ grid_end: e.target.value })}
+                disabled={loading}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>AI Scheduling Preferences</div>
+          <div style={styles.fieldRow}>
+            <div style={styles.field}>
+              <label style={styles.label}>Scheduling Density</label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={settings.scheduling_density}
+                onChange={(e) => applySetting({ scheduling_density: Number(e.target.value) })}
+                style={styles.range}
+              />
+              <div style={styles.rangeLabels}>
+                <span>Flexible</span>
+                <strong>{settings.scheduling_density}</strong>
+                <span>High</span>
+              </div>
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Preferred Work Time</label>
+              <select
+                style={styles.select}
+                value={settings.preferred_time}
+                onChange={(e) => applySetting({ preferred_time: e.target.value })}
+                disabled={loading}
+              >
+                <option value="morning">Morning (9-12)</option>
+                <option value="afternoon">Afternoon (1-5)</option>
+                <option value="evening">Evening (6-9)</option>
+                <option value="any">Any Time</option>
+              </select>
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Auto-Schedule Tasks</label>
+              <Toggle value={settings.auto_schedule} onChange={(value) => applySetting({ auto_schedule: value })} />
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>Focus Timer</div>
+          <div style={styles.fieldRow}>
+            <div style={styles.field}>
+              <label style={styles.label}>Focus Duration</label>
+              <select
+                style={styles.select}
+                value={String(settings.focus_duration)}
+                onChange={(e) => applySetting({ focus_duration: Number(e.target.value) })}
+                disabled={loading}
+              >
+                <option value="15">15 min</option>
+                <option value="25">25 min</option>
+                <option value="30">30 min</option>
+                <option value="45">45 min</option>
+                <option value="60">60 min</option>
+              </select>
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Break Duration</label>
+              <select
+                style={styles.select}
+                value={String(settings.break_duration)}
+                onChange={(e) => applySetting({ break_duration: Number(e.target.value) })}
+                disabled={loading}
+              >
+                <option value="5">5 min</option>
+                <option value="10">10 min</option>
+                <option value="15">15 min</option>
+              </select>
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Timer Sound</label>
+              <Toggle value={settings.timer_sound} onChange={(value) => applySetting({ timer_sound: value })} />
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>Notifications</div>
+          <div style={styles.fieldRow}>
+            <div style={styles.field}>
+              <label style={styles.label}>Task Reminders</label>
+              <Toggle value={settings.task_reminders} onChange={(value) => applySetting({ task_reminders: value })} />
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Daily Report</label>
+              <Toggle value={settings.daily_report} onChange={(value) => applySetting({ daily_report: value })} />
+            </div>
+            {settings.task_reminders && (
+              <div style={styles.subField}>
+                <label style={styles.label}>Notify Before</label>
+                <select
+                  style={styles.select}
+                  value={String(settings.notify_before)}
+                  onChange={(e) => applySetting({ notify_before: Number(e.target.value) })}
+                  disabled={loading}
+                >
+                  <option value="5">5 min</option>
+                  <option value="10">10 min</option>
+                  <option value="15">15 min</option>
+                  <option value="30">30 min</option>
+                </select>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section style={styles.card}>
+          <div style={styles.cardTitle}>Appearance</div>
+          <div style={styles.fieldRow}>
+            <div style={styles.field}>
+              <label style={styles.label}>Theme</label>
+              <select
+                style={styles.select}
+                value={settings.theme}
+                onChange={(e) => applySetting({ theme: e.target.value })}
+                disabled={loading}
+              >
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="auto">Auto</option>
+              </select>
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>Language</label>
+              <select
+                style={styles.select}
+                value={settings.language}
+                onChange={(e) => applySetting({ language: e.target.value })}
+                disabled={loading}
+              >
+                <option value="ko">한국어</option>
+                <option value="en">English</option>
+                <option value="jp">日本語</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.cardDanger}>
+          <div style={styles.cardTitle}>Danger Zone</div>
+          <button style={styles.deleteButton}>Delete All Data</button>
+        </section>
 
         <div style={styles.logoutWrap}>
           <button style={styles.logoutButton} onClick={logout}>로그아웃</button>
@@ -164,119 +243,101 @@ export default function Settings() {
   );
 }
 
-const cardBase = {
-  background: "rgba(255,255,255,0.9)",
-  border: "1px solid rgba(15,23,42,0.08)",
-  borderRadius: 18,
-  padding: 16,
-  boxShadow: "0 12px 24px rgba(15,23,42,0.08)",
-};
-
-const inputBase = {
-  width: "100%",
-  border: "1px solid rgba(15,23,42,0.12)",
-  background: "rgba(255,255,255,0.9)",
-  borderRadius: 12,
-  padding: "10px 12px",
-  fontSize: 13,
-  color: "#0f172a",
-  minWidth: 0,
-};
-
 const styles = {
   shell: {
     minHeight: "100vh",
-    height: "100vh",
     display: "grid",
-    gridTemplateColumns: "220px 1fr",
-    background: "linear-gradient(180deg, #f6f7fb 0%, #eef1f7 60%, #e8ecf5 100%)",
-    position: "relative",
-    overflow: "hidden",
-    color: "#0f172a",
+    gridTemplateColumns: "96px 1fr",
+    background: "#f6f7fb",
     fontFamily: "'Pretendard','SF Pro Display','Apple SD Gothic Neo','Noto Sans KR',sans-serif",
-  },
-  shellBackdrop: {
-    position: "absolute",
-    inset: 0,
-    background: "radial-gradient(circle at 12% 5%, rgba(59,130,246,0.12), transparent 45%), radial-gradient(circle at 80% 10%, rgba(255,59,48,0.12), transparent 45%)",
-    pointerEvents: "none",
-    zIndex: 0,
-  },
-  sidebar: {
-    position: "relative",
-    zIndex: 1,
-    padding: 18,
-    borderRight: "1px solid rgba(15,23,42,0.08)",
-    background: "rgba(255,255,255,0.6)",
-    backdropFilter: "blur(14px)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-  },
-  brand: { fontWeight: 800, fontSize: 18, display: "flex", alignItems: "center", gap: 8, letterSpacing: "-0.3px" },
-  brandLogo: { width: 22, height: 22, display: "block" },
-  nav: { display: "grid", gap: 8 },
-  navItem: {
-    padding: "10px 12px",
-    borderRadius: 14,
-    cursor: "pointer",
-    opacity: 0.8,
-  },
-  navItemActive: {
-    background: "rgba(15,23,42,0.08)",
-    opacity: 1,
-    fontWeight: 700,
+    color: "#0f172a",
   },
   main: {
-    position: "relative",
-    zIndex: 1,
-    padding: 22,
+    padding: "24px 32px",
     overflow: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
+    display: "grid",
+    gap: 18,
   },
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  hTitle: { fontSize: 24, fontWeight: 900, letterSpacing: "-0.4px" },
-  hSub: { fontSize: 12, opacity: 0.7 },
-  settingsGrid: {
-    display: "grid",
-    gap: 16,
+  hTitle: { fontSize: 22, fontWeight: 800 },
+  hSub: { fontSize: 12, opacity: 0.6 },
+  error: {
+    padding: "10px 12px",
+    borderRadius: 12,
+    background: "rgba(239,68,68,0.12)",
+    color: "#b91c1c",
+    fontSize: 12,
+    fontWeight: 600,
   },
-  card: cardBase,
-  cardTitle: { fontSize: 15, fontWeight: 700, marginBottom: 12 },
+  card: {
+    background: "white",
+    borderRadius: 18,
+    border: "1px solid rgba(15,23,42,0.08)",
+    padding: 18,
+    display: "grid",
+    gap: 14,
+  },
+  cardDanger: {
+    background: "rgba(239,68,68,0.08)",
+    borderRadius: 18,
+    border: "1px solid rgba(239,68,68,0.2)",
+    padding: 18,
+    display: "grid",
+    gap: 12,
+  },
+  cardTitle: { fontSize: 15, fontWeight: 700 },
+  profileRow: { display: "flex", gap: 14, alignItems: "center" },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    background: "linear-gradient(135deg, #6366f1, #3b82f6)",
+    color: "white",
+    display: "grid",
+    placeItems: "center",
+    fontWeight: 700,
+  },
+  profileName: { fontWeight: 700 },
+  profileEmail: { fontSize: 12, color: "#94a3b8" },
   fieldRow: {
     display: "grid",
-    gap: 12,
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 14,
+    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
   },
-  field: {
+  field: { display: "grid", gap: 8 },
+  subField: {
     display: "grid",
     gap: 8,
-    minWidth: 0,
+    borderLeft: "3px solid rgba(59,130,246,0.4)",
+    paddingLeft: 12,
   },
-  label: { fontSize: 13, fontWeight: 600 },
-  input: inputBase,
+  label: { fontSize: 12, fontWeight: 600, color: "#475569" },
+  input: {
+    border: "1px solid rgba(15,23,42,0.12)",
+    borderRadius: 12,
+    padding: "10px 12px",
+    fontSize: 13,
+  },
   select: {
-    ...inputBase,
-    appearance: "none",
-    backgroundImage: "linear-gradient(45deg, transparent 50%, #64748b 50%), linear-gradient(135deg, #64748b 50%, transparent 50%)",
-    backgroundPosition: "calc(100% - 16px) 55%, calc(100% - 10px) 55%",
-    backgroundSize: "6px 6px, 6px 6px",
-    backgroundRepeat: "no-repeat",
+    border: "1px solid rgba(15,23,42,0.12)",
+    borderRadius: 12,
+    padding: "10px 12px",
+    fontSize: 13,
+    background: "white",
   },
-  toggleRow: {
-    marginTop: 10,
+  range: {
+    width: "100%",
+  },
+  rangeLabels: {
     display: "flex",
-    alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    fontSize: 11,
+    color: "#94a3b8",
   },
-  toggleLabel: { fontSize: 13, fontWeight: 600 },
   toggle: {
     width: 44,
     height: 26,
@@ -303,19 +364,17 @@ const styles = {
   toggleKnobOn: {
     transform: "translateX(18px)",
   },
-  ghostButton: {
-    padding: "10px 12px",
+  deleteButton: {
+    border: "none",
+    padding: "12px 16px",
     borderRadius: 12,
-    border: "1px dashed rgba(15,23,42,0.2)",
-    background: "rgba(15,23,42,0.04)",
-    color: "#475569",
-    fontSize: 12,
+    background: "rgba(239,68,68,0.2)",
+    color: "#b91c1c",
+    fontWeight: 700,
     cursor: "pointer",
-    textAlign: "left",
   },
   logoutWrap: {
-    marginTop: "auto",
-    paddingTop: 6,
+    marginTop: 6,
   },
   logoutButton: {
     width: "100%",

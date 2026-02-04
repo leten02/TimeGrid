@@ -17,6 +17,13 @@ class ScheduleBlock(Base):
         index=True,
     )
 
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -28,3 +35,4 @@ class ScheduleBlock(Base):
 
 # 조회 성능용(유저별 + 시간순)
 Index("ix_schedule_blocks_user_start", ScheduleBlock.user_id, ScheduleBlock.start_at)
+Index("ix_schedule_blocks_user_task", ScheduleBlock.user_id, ScheduleBlock.task_id)

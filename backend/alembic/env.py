@@ -9,6 +9,10 @@ from app.core.config import settings
 from app.models.base import Base
 from app.models.user import User  # noqa
 from app.models.schedule_block import ScheduleBlock  # noqa
+from app.models.task import Task  # noqa
+from app.models.fixed_schedule import FixedSchedule  # noqa
+from app.models.blocked_template import BlockedTemplate  # noqa
+from app.models.user_settings import UserSettings  # noqa
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
