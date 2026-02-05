@@ -26,10 +26,10 @@ export default function Settings() {
   };
 
   return (
-    <div style={styles.shell}>
+    <div style={styles.shell} className="tg-shell">
       <Sidebar />
-      <main style={styles.main}>
-        <div style={styles.header}>
+      <main style={styles.main} className="tg-main">
+        <div style={styles.header} className="tg-header">
           <div>
             <div style={styles.hTitle}>설정</div>
             <div style={styles.hSub}>앱 환경과 AI 스케줄링 기본값을 설정합니다.</div>

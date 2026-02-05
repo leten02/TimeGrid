@@ -87,15 +87,15 @@ export default function Reports() {
     : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   return (
-    <div style={styles.shell}>
+    <div style={styles.shell} className="tg-shell">
       <Sidebar />
-      <main style={styles.main}>
-        <div style={styles.header}>
+      <main style={styles.main} className="tg-main">
+        <div style={styles.header} className="tg-header">
           <div>
             <div style={styles.hTitle}>주간 생산성 리포트</div>
             <div style={styles.hSub}>{formatWeekRange(weekStart)}</div>
           </div>
-          <div style={styles.headerActions}>
+          <div style={styles.headerActions} className="tg-header-actions">
             <button style={styles.btnGhost}>공유</button>
             <button style={styles.btnPrimary}>PDF 내보내기</button>
           </div>
@@ -195,7 +195,7 @@ const styles = {
   },
   hTitle: { fontSize: 22, fontWeight: 800 },
   hSub: { fontSize: 12, opacity: 0.6 },
-  headerActions: { display: "flex", gap: 10 },
+  headerActions: { display: "flex", gap: 10, alignItems: "center" },
   btnPrimary: {
     border: "none",
     padding: "10px 16px",
@@ -204,6 +204,10 @@ const styles = {
     color: "white",
     fontWeight: 700,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 38,
   },
   btnGhost: {
     border: "1px solid rgba(15,23,42,0.12)",
@@ -212,6 +216,10 @@ const styles = {
     borderRadius: 14,
     fontWeight: 700,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 38,
   },
   summaryGrid: {
     display: "grid",

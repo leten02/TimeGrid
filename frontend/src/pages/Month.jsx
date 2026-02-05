@@ -49,15 +49,15 @@ export default function Month() {
   const today = new Date();
 
   return (
-    <div style={styles.shell}>
+    <div style={styles.shell} className="tg-shell">
       <Sidebar />
-      <main style={styles.main}>
-        <div style={styles.header}>
+      <main style={styles.main} className="tg-main">
+        <div style={styles.header} className="tg-header">
           <div>
             <div style={styles.hTitle}>{monthLabel}</div>
             <div style={styles.hSub}>월간 캘린더</div>
           </div>
-          <div style={styles.headerRight}>
+          <div style={styles.headerRight} className="tg-header-actions">
             <div style={styles.navGroup}>
               <button style={styles.iconBtn} onClick={() => setMonthOffset((v) => v - 1)}>◀</button>
               <button style={styles.btnGhost} onClick={() => setMonthOffset(0)}>오늘</button>

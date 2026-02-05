@@ -63,3 +63,67 @@ button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
+
+@media (max-width: 900px) {
+  .tg-shell {
+    grid-template-columns: 1fr !important;
+  }
+
+  .tg-main {
+    padding: 16px !important;
+  }
+
+  .tg-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  .tg-header-actions {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  .tg-sidebar {
+    width: 100% !important;
+    height: auto !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 10px 12px !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(15,23,42,0.08) !important;
+    gap: 8px !important;
+  }
+
+  .tg-brand {
+    flex-direction: row !important;
+    gap: 8px !important;
+  }
+
+  .tg-brand-text {
+    display: none !important;
+  }
+
+  .tg-nav {
+    display: flex !important;
+    gap: 6px !important;
+    width: auto !important;
+    margin: 0 !important;
+  }
+
+  .tg-nav-item {
+    width: auto !important;
+    padding: 8px 10px !important;
+  }
+
+  .tg-nav-label {
+    display: none !important;
+  }
+
+  .tg-bottom {
+    margin-top: 0 !important;
+  }
+}

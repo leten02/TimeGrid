@@ -21,15 +21,15 @@ class UserSettings(Base):
 
     week_start_day: Mapped[str] = mapped_column(String(10), nullable=False, default="sunday")
     compact_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    grid_start: Mapped[str] = mapped_column(String(5), nullable=False, default="06:00")
-    grid_end: Mapped[str] = mapped_column(String(5), nullable=False, default="23:00")
+    grid_start: Mapped[str] = mapped_column(String(5), nullable=False, default="00:00")
+    grid_end: Mapped[str] = mapped_column(String(5), nullable=False, default="23:59")
 
     scheduling_density: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
     preferred_time: Mapped[str] = mapped_column(String(20), nullable=False, default="any")
     auto_schedule: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     focus_duration: Mapped[int] = mapped_column(Integer, nullable=False, default=45)
-    break_duration: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    break_duration: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
     timer_sound: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     task_reminders: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

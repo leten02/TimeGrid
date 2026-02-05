@@ -201,7 +201,7 @@ export default function Tasks() {
         }
       }
       const blockedRanges = parseBlockedRanges(blockedKeys);
-      const startHour = parseHour(settings.grid_start, 6);
+      const startHour = parseHour(settings.grid_start, 0);
       const endHour = parseHour(settings.grid_end, 24);
 
       const res = await api("/ai/reschedule", {
@@ -344,7 +344,7 @@ export default function Tasks() {
       }
       const blockedRanges = parseBlockedRanges(blockedKeys);
 
-      const startHour = parseHour(settings.grid_start, 6);
+      const startHour = parseHour(settings.grid_start, 0);
       const endHour = parseHour(settings.grid_end, 24);
 
       const res = await api("/ai/schedule", {
@@ -463,15 +463,15 @@ export default function Tasks() {
   };
 
   return (
-    <div style={styles.shell}>
+    <div style={styles.shell} className="tg-shell">
       <Sidebar />
-      <main style={styles.main}>
-        <div style={styles.header}>
+      <main style={styles.main} className="tg-main">
+        <div style={styles.header} className="tg-header">
           <div>
             <div style={styles.hTitle}>태스크 관리</div>
             <div style={styles.hSub}>진행 중 {pendingTasks.length}개 · 완료됨 {doneTasks.length}개</div>
           </div>
-          <div style={styles.headerActions}>
+          <div style={styles.headerActions} className="tg-header-actions">
             <button style={styles.btnGhost} onClick={scheduleTasks} disabled={loading}>
               {loading ? "스케줄링 중" : "AI가 시간 찾기"}
             </button>
@@ -769,7 +769,7 @@ const styles = {
   },
   hTitle: { fontSize: 22, fontWeight: 800 },
   hSub: { fontSize: 12, opacity: 0.6 },
-  headerActions: { display: "flex", gap: 10 },
+  headerActions: { display: "flex", gap: 10, alignItems: "center" },
   btnPrimary: {
     border: "none",
     padding: "10px 16px",
@@ -778,6 +778,10 @@ const styles = {
     color: "white",
     fontWeight: 700,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 38,
   },
   btnGhost: {
     border: "1px solid rgba(15,23,42,0.12)",
@@ -786,6 +790,10 @@ const styles = {
     borderRadius: 14,
     fontWeight: 700,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 38,
   },
   formCard: {
     background: "white",
@@ -902,7 +910,7 @@ const styles = {
   toggleHandleOn: {
     transform: "translateX(20px)",
   },
-  formActions: { display: "flex", justifyContent: "flex-end", gap: 8 },
+  formActions: { display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" },
   notice: {
     background: "rgba(59,130,246,0.1)",
     border: "1px solid rgba(59,130,246,0.2)",
@@ -954,7 +962,7 @@ const styles = {
     fontSize: 12,
     fontWeight: 600,
   },
-  previewActions: { display: "flex", justifyContent: "flex-end", gap: 8 },
+  previewActions: { display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" },
   section: { display: "grid", gap: 12 },
   sectionTitle: { fontSize: 14, fontWeight: 700 },
   list: { display: "grid", gap: 12 },

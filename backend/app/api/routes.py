@@ -1,7 +1,8 @@
 import json
 import re
 import uuid
-from datetime import datetime, timezone, timedelta
+import math
+from datetime import datetime, timezone, timedelta, date
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
@@ -38,13 +39,13 @@ router = APIRouter()
 DEFAULT_SETTINGS = {
     "week_start_day": "sunday",
     "compact_mode": False,
-    "grid_start": "06:00",
-    "grid_end": "23:00",
+    "grid_start": "00:00",
+    "grid_end": "23:59",
     "scheduling_density": 60,
     "preferred_time": "any",
     "auto_schedule": True,
     "focus_duration": 45,
-    "break_duration": 5,
+    "break_duration": 15,
     "timer_sound": True,
     "task_reminders": True,
     "daily_report": False,
@@ -180,6 +181,244 @@ def mark_past_slots(occupied: list[list[bool]], slots_per_day: int, start_hour: 
 def extract_json(text: str) -> dict | list | None:
     if not text:
         return None
+
+
+def parse_hhmm_to_minutes(value: str, fallback: int = 0) -> int:
+    if not value or ":" not in value:
+        return fallback
+    try:
+        h, m = value.split(":")
+        hour = int(h)
+        minute = int(m)
+        return hour * 60 + minute
+    except ValueError:
+        return fallback
+
+
+def normalize_grid_bounds(start_str: str, end_str: str) -> tuple[int, int]:
+    start_min = parse_hhmm_to_minutes(start_str, 0)
+    end_min = parse_hhmm_to_minutes(end_str, 24 * 60)
+    if end_min <= start_min:
+        end_min = start_min + 60
+    # treat 23:59 as full-day end
+    if end_min >= 23 * 60 + 59:
+        end_min = 24 * 60
+    return start_min, end_min
+
+
+def day_index_sun0(target_date: date) -> int:
+    return (target_date.weekday() + 1) % 7
+
+
+def iter_dates(start_date: date, end_date: date) -> list[date]:
+    if end_date < start_date:
+        return []
+    days = []
+    cursor = start_date
+    while cursor <= end_date:
+        days.append(cursor)
+        cursor = cursor + timedelta(days=1)
+    return days
+
+
+def build_daily_occupied(
+    day_date: date,
+    start_min: int,
+    end_min: int,
+    now_local: datetime,
+    local_tz: timezone,
+    existing_blocks: list[ScheduleBlock],
+    fixed_schedules: list[FixedSchedule],
+    blocked_templates: list[BlockedTemplate],
+) -> list[bool]:
+    slots_per_day = max(1, int(math.ceil((end_min - start_min) / SLOT_MINUTES)))
+    occupied = [False] * slots_per_day
+
+    def mark_range(range_start_min: int, range_end_min: int) -> None:
+        if range_end_min <= range_start_min:
+            return
+        start_slot = max(0, min(slots_per_day, int((range_start_min - start_min) / SLOT_MINUTES)))
+        end_slot = max(0, min(slots_per_day, int(math.ceil((range_end_min - start_min) / SLOT_MINUTES))))
+        for i in range(start_slot, end_slot):
+            occupied[i] = True
+
+    day_idx = day_index_sun0(day_date)
+
+    for item in fixed_schedules:
+        if day_idx in item.days:
+            sh, sm = [int(x) for x in item.start_time.split(":")]
+            eh, em = [int(x) for x in item.end_time.split(":")]
+            mark_range(sh * 60 + sm, eh * 60 + em)
+
+    for item in blocked_templates:
+        if day_idx in item.days:
+            sh, sm = [int(x) for x in item.start_time.split(":")]
+            eh, em = [int(x) for x in item.end_time.split(":")]
+            mark_range(sh * 60 + sm, eh * 60 + em)
+
+    day_start_local = datetime(day_date.year, day_date.month, day_date.day, tzinfo=local_tz)
+    day_end_local = day_start_local + timedelta(days=1)
+
+    for block in existing_blocks:
+        start_local = block.start_at.astimezone(local_tz)
+        end_local = block.end_at.astimezone(local_tz)
+        if end_local <= day_start_local or start_local >= day_end_local:
+            continue
+        overlap_start = max(start_local, day_start_local)
+        overlap_end = min(end_local, day_end_local)
+        range_start_min = int((overlap_start - day_start_local).total_seconds() / 60)
+        range_end_min = int((overlap_end - day_start_local).total_seconds() / 60)
+        mark_range(range_start_min, range_end_min)
+
+    if now_local.date() == day_date:
+        now_min = int((now_local - day_start_local).total_seconds() / 60)
+        mark_range(start_min, now_min)
+
+    return occupied
+
+
+def plan_study_blocks(
+    title: str,
+    total_minutes: int,
+    start_date: date,
+    end_date: date,
+    start_min: int,
+    end_min: int,
+    focus_minutes: int,
+    break_minutes: int,
+    preferred_time: str | None,
+    now_local: datetime,
+    local_tz: timezone,
+    existing_blocks: list[ScheduleBlock],
+    fixed_schedules: list[FixedSchedule],
+    blocked_templates: list[BlockedTemplate],
+) -> list[dict]:
+    dates = iter_dates(start_date, end_date)
+    if not dates:
+        return []
+
+    total_slots = max(1, int(math.ceil(total_minutes / SLOT_MINUTES)))
+    chunk_slots = max(1, int(math.ceil(focus_minutes / SLOT_MINUTES)))
+    break_slots = max(0, int(math.ceil(break_minutes / SLOT_MINUTES)))
+
+    preferred_windows = {
+        "morning": (9 * 60, 12 * 60),
+        "afternoon": (13 * 60, 17 * 60),
+        "evening": (18 * 60, 21 * 60),
+    }
+
+    day_infos = []
+    for day_date in dates:
+        occupied = build_daily_occupied(
+            day_date,
+            start_min,
+            end_min,
+            now_local,
+            local_tz,
+            existing_blocks,
+            fixed_schedules,
+            blocked_templates,
+        )
+        free_slots = sum(1 for slot in occupied if not slot)
+        day_infos.append(
+            {
+                "date": day_date,
+                "occupied": occupied,
+                "free": free_slots,
+            }
+        )
+
+    day_infos = [info for info in day_infos if info["free"] > 0]
+    if not day_infos:
+        return []
+
+    day_count = len(day_infos)
+    per_day = total_slots // day_count
+    remainder = total_slots % day_count
+
+    proposed = []
+    remaining_slots = total_slots
+
+    def find_run(occupied: list[bool], length: int, window: tuple[int, int] | None) -> int | None:
+        if length <= 0:
+            return None
+        start_idx = 0
+        end_idx = len(occupied) - length
+        if window:
+            win_start_min, win_end_min = window
+            start_idx = max(0, int((win_start_min - start_min) / SLOT_MINUTES))
+            end_idx = min(end_idx, int(math.ceil((win_end_min - start_min) / SLOT_MINUTES)) - length)
+        for i in range(start_idx, end_idx + 1):
+            if all(not occupied[i + j] for j in range(length)):
+                return i
+        return None
+
+    for idx, info in enumerate(day_infos):
+        target = per_day + (1 if idx < remainder else 0)
+        to_allocate = min(target, remaining_slots)
+        if to_allocate <= 0:
+            continue
+
+        occupied = info["occupied"]
+        day_date = info["date"]
+        day_start_local = datetime(day_date.year, day_date.month, day_date.day, tzinfo=local_tz)
+        window = preferred_windows.get(preferred_time or "any")
+
+        while to_allocate > 0:
+            current_chunk = chunk_slots if to_allocate >= chunk_slots else to_allocate
+            placement = find_run(occupied, current_chunk, window)
+            if placement is None and window:
+                placement = find_run(occupied, current_chunk, None)
+            if placement is None:
+                if current_chunk > 1:
+                    current_chunk = 1
+                    placement = find_run(occupied, current_chunk, window)
+                    if placement is None and window:
+                        placement = find_run(occupied, current_chunk, None)
+                if placement is None:
+                    break
+
+            for i in range(placement, placement + current_chunk):
+                occupied[i] = True
+
+            start_at_local = day_start_local + timedelta(minutes=start_min + placement * SLOT_MINUTES)
+            end_at_local = start_at_local + timedelta(minutes=current_chunk * SLOT_MINUTES)
+            proposed.append(
+                {
+                    "title": title,
+                    "start_at": start_at_local,
+                    "end_at": end_at_local,
+                }
+            )
+
+            for i in range(placement + current_chunk, min(len(occupied), placement + current_chunk + break_slots)):
+                occupied[i] = True
+
+            to_allocate -= current_chunk
+            remaining_slots -= current_chunk
+
+        info["occupied"] = occupied
+
+    if remaining_slots > 0:
+        for info in day_infos:
+            if remaining_slots <= 0:
+                break
+            occupied = info["occupied"]
+            day_date = info["date"]
+            day_start_local = datetime(day_date.year, day_date.month, day_date.day, tzinfo=local_tz)
+            for i in range(len(occupied)):
+                if remaining_slots <= 0:
+                    break
+                if occupied[i]:
+                    continue
+                occupied[i] = True
+                start_at_local = day_start_local + timedelta(minutes=start_min + i * SLOT_MINUTES)
+                end_at_local = start_at_local + timedelta(minutes=SLOT_MINUTES)
+                proposed.append({"title": title, "start_at": start_at_local, "end_at": end_at_local})
+                remaining_slots -= 1
+            info["occupied"] = occupied
+
+    return proposed
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -522,8 +761,13 @@ def get_or_create_settings(db: Session, user: User) -> UserSettings:
     if row:
         if row.focus_duration == 25:
             row.focus_duration = DEFAULT_SETTINGS["focus_duration"]
-            db.commit()
-            db.refresh(row)
+        if row.break_duration == 5:
+            row.break_duration = DEFAULT_SETTINGS["break_duration"]
+        if row.grid_start == "06:00" and row.grid_end == "23:00":
+            row.grid_start = DEFAULT_SETTINGS["grid_start"]
+            row.grid_end = DEFAULT_SETTINGS["grid_end"]
+        db.commit()
+        db.refresh(row)
         return row
     row = UserSettings(user_id=user.id, **DEFAULT_SETTINGS)
     db.add(row)
@@ -1107,6 +1351,8 @@ def ai_chat(
     if not settings.GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="gemini api key not configured")
 
+    user_settings = get_or_create_settings(db, user)
+
     context = payload.context
     now_utc = context.now if context and context.now else datetime.now(timezone.utc)
     if now_utc.tzinfo is None:
@@ -1122,7 +1368,7 @@ def ai_chat(
         "You are TimeGrid scheduling assistant. Return ONLY JSON.\n"
         "Output shape:\n"
         "{\n"
-        '  "intent": "create_event" | "clarify" | "chat",\n'
+        '  "intent": "create_event" | "plan_task" | "clarify" | "chat",\n'
         '  "reply": "Korean reply to user",\n'
         '  "events": [\n'
         "    {\n"
@@ -1133,15 +1379,24 @@ def ai_chat(
         '      "duration_minutes": number,\n'
         '      "note": "string"\n'
         "    }\n"
-        "  ]\n"
+        "  ],\n"
+        '  "plan": {\n'
+        '    "title": "string",\n'
+        '    "deadline": "YYYY-MM-DD",\n'
+        '    "total_minutes": number,\n'
+        '    "preferred_time": "morning" | "afternoon" | "evening" | "any",\n'
+        '    "note": "string"\n'
+        "  }\n"
         "}\n"
         "Rules:\n"
         "- If user asks to add/schedule events, intent=create_event and fill events array.\n"
+        "- If user asks for a study/plan schedule for a task or exam, intent=plan_task and fill plan.\n"
+        "- For plan_task, always include total_minutes. If user did not specify total time, estimate a reasonable total_minutes.\n"
         "- Use 24h time. If end_time is missing, include duration_minutes (default "
         f"{default_duration}"
         ").\n"
         "- If date is missing, choose the closest future date based on current local datetime.\n"
-        "- If time is missing/ambiguous or in the past, intent=clarify and reply asking for details.\n"
+        "- If time is missing/ambiguous or in the past for create_event, intent=clarify and reply asking for details.\n"
         "- If not a scheduling request, intent=chat and events=[] or omit.\n"
         "- Always respond in Korean in reply.\n"
         f"Current local datetime: {now_local.isoformat()}\n"
@@ -1276,6 +1531,111 @@ def ai_chat(
             reply = f"총 {len(created_blocks)}개 일정은 추가했어요. 나머지는 정보가 부족해 추가하지 못했어요."
         else:
             reply = f"네, {len(created_blocks)}개의 일정을 추가해 드렸어요."
+
+    if intent == "plan_task":
+        plan = parsed.get("plan")
+        if not isinstance(plan, dict):
+            plan = parsed.get("task") if isinstance(parsed.get("task"), dict) else None
+
+        if not plan:
+            return {"reply": "어떤 공부 계획을 세우길 원하시나요? 시험명과 마감일을 알려주세요.", "intent": "clarify", "created_blocks": []}
+
+        title = (plan.get("title") or "").strip() or "공부 계획"
+        deadline_str = plan.get("deadline")
+        total_minutes = plan.get("total_minutes")
+        preferred_time = plan.get("preferred_time") or "any"
+
+        try:
+            total_minutes = int(total_minutes)
+        except (TypeError, ValueError):
+            return {"reply": "총 공부 시간을 추정하기 어려워요. 대략 몇 시간 공부할지 알려주세요.", "intent": "clarify", "created_blocks": []}
+
+        if not deadline_str:
+            return {"reply": "시험 날짜(마감일)를 알려주세요.", "intent": "clarify", "created_blocks": []}
+
+        try:
+            deadline_date = datetime.fromisoformat(deadline_str).date()
+        except ValueError:
+            return {"reply": "마감일 형식이 올바르지 않아요. 예: 2026-02-21", "intent": "clarify", "created_blocks": []}
+
+        start_date = now_local.date()
+        end_date = deadline_date - timedelta(days=1)
+        if end_date < start_date:
+            end_date = start_date
+
+        start_min, end_min = normalize_grid_bounds(user_settings.grid_start, user_settings.grid_end)
+        focus_minutes = user_settings.focus_duration
+        break_minutes = user_settings.break_duration
+
+        range_start_local = datetime(start_date.year, start_date.month, start_date.day, tzinfo=local_tz)
+        range_end_local = datetime(end_date.year, end_date.month, end_date.day, tzinfo=local_tz) + timedelta(days=1)
+        range_start_utc = range_start_local.astimezone(timezone.utc)
+        range_end_utc = range_end_local.astimezone(timezone.utc)
+
+        existing_blocks = db.execute(
+            select(ScheduleBlock).where(
+                ScheduleBlock.user_id == user.id,
+                ScheduleBlock.start_at < range_end_utc,
+                ScheduleBlock.end_at > range_start_utc,
+            )
+        ).scalars().all()
+
+        fixed_schedules = db.execute(
+            select(FixedSchedule).where(FixedSchedule.user_id == user.id)
+        ).scalars().all()
+
+        blocked_templates = db.execute(
+            select(BlockedTemplate).where(BlockedTemplate.user_id == user.id)
+        ).scalars().all()
+
+        proposed = plan_study_blocks(
+            title=title,
+            total_minutes=total_minutes,
+            start_date=start_date,
+            end_date=end_date,
+            start_min=start_min,
+            end_min=end_min,
+            focus_minutes=focus_minutes,
+            break_minutes=break_minutes,
+            preferred_time=preferred_time,
+            now_local=now_local,
+            local_tz=local_tz,
+            existing_blocks=existing_blocks,
+            fixed_schedules=fixed_schedules,
+            blocked_templates=blocked_templates,
+        )
+
+        if not proposed:
+            return {
+                "reply": "가능한 시간이 부족해서 계획을 세우지 못했어요. 차단 시간을 확인해 주세요.",
+                "intent": "clarify",
+                "created_blocks": [],
+            }
+
+        created_blocks = []
+        for block in proposed:
+            start_utc = block["start_at"].astimezone(timezone.utc)
+            end_utc = block["end_at"].astimezone(timezone.utc)
+            new_block = ScheduleBlock(
+                user_id=user.id,
+                title=block["title"],
+                start_at=start_utc,
+                end_at=end_utc,
+            )
+            db.add(new_block)
+            db.flush()
+            created_blocks.append(
+                {
+                    "id": str(new_block.id),
+                    "title": new_block.title,
+                    "start_at": new_block.start_at,
+                    "end_at": new_block.end_at,
+                }
+            )
+
+        db.commit()
+        hours = round(total_minutes / 60, 1)
+        reply = f"시험 전날까지 총 {hours}시간 분량으로 고르게 배치했어요. 필요하면 조정해 드릴게요."
 
     return {"reply": reply, "intent": intent, "created_blocks": created_blocks}
 

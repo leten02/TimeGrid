@@ -39,7 +39,7 @@ export default function Day() {
   const currentDay = useMemo(() => addDays(startOfDay(new Date()), dayOffset), [dayOffset]);
 
   const dayShortLabel = DAY_LABELS_SUN[currentDay.getDay()];
-  const startMin = parseTimeToMinutes(settings.grid_start, 6 * 60);
+  const startMin = parseTimeToMinutes(settings.grid_start, 0);
   const rawEndMin = parseTimeToMinutes(settings.grid_end, 24 * 60);
   const endMin = rawEndMin > startMin ? rawEndMin : startMin + 60;
   const pxPerMin = settings.compact_mode ? 1.05 : 1.2;
@@ -51,15 +51,15 @@ export default function Day() {
   const subTitle = DAY_NAMES[currentDay.getDay()];
 
   return (
-    <div style={styles.shell}>
+    <div style={styles.shell} className="tg-shell">
       <Sidebar />
-      <main style={styles.main}>
-        <div style={styles.header}>
+      <main style={styles.main} className="tg-main">
+        <div style={styles.header} className="tg-header">
           <div>
             <div style={styles.hTitle}>{title}</div>
             <div style={styles.hSub}>{subTitle}</div>
           </div>
-          <div style={styles.headerRight}>
+          <div style={styles.headerRight} className="tg-header-actions">
             <div style={styles.navGroup}>
               <button style={styles.iconBtn} onClick={() => setDayOffset((v) => v - 1)}>◀</button>
               <button style={styles.btnGhost} onClick={() => setDayOffset(0)}>오늘</button>

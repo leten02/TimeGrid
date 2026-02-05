@@ -139,10 +139,10 @@ export default function Setup() {
   }, [fixedSchedules, blockedTemplates]);
 
   return (
-    <div style={styles.shell}>
+    <div style={styles.shell} className="tg-shell">
       <Sidebar />
-      <main style={styles.main}>
-        <div style={styles.header}>
+      <main style={styles.main} className="tg-main">
+        <div style={styles.header} className="tg-header">
           <div>
             <div style={styles.hTitle}>스케줄 설정</div>
             <div style={styles.hSub}>고정 일정과 차단 시간을 먼저 설정해 주세요.</div>
@@ -390,6 +390,10 @@ const styles = {
     borderRadius: 12,
     fontWeight: 700,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 34,
   },
   btnPrimary: {
     border: "none",
@@ -399,6 +403,10 @@ const styles = {
     color: "white",
     fontWeight: 700,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 34,
   },
   form: { display: "grid", gap: 12 },
   input: {
@@ -438,7 +446,7 @@ const styles = {
     gap: 12,
     gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
   },
-  formActions: { display: "flex", justifyContent: "flex-end", gap: 8 },
+  formActions: { display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" },
   empty: { fontSize: 12, color: "#94a3b8", padding: "8px 0" },
   itemList: { display: "grid", gap: 10 },
   item: {

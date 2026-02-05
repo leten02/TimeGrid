@@ -30,15 +30,15 @@ export default function Year() {
   const months = useMemo(() => Array.from({ length: 12 }, (_, i) => i), []);
 
   return (
-    <div style={styles.shell}>
+    <div style={styles.shell} className="tg-shell">
       <Sidebar />
-      <main style={styles.main}>
-        <div style={styles.header}>
+      <main style={styles.main} className="tg-main">
+        <div style={styles.header} className="tg-header">
           <div>
             <div style={styles.hTitle}>{currentYear}년</div>
             <div style={styles.hSub}>연간 캘린더</div>
           </div>
-          <div style={styles.headerRight}>
+          <div style={styles.headerRight} className="tg-header-actions">
             <div style={styles.navGroup}>
               <button style={styles.iconBtn} onClick={() => setYearOffset((v) => v - 1)}>◀</button>
               <button style={styles.btnGhost} onClick={() => setYearOffset(0)}>오늘</button>

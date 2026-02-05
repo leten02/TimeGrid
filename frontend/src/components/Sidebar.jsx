@@ -62,15 +62,15 @@ export default function Sidebar() {
   const { pathname } = useLocation();
 
   return (
-    <aside style={styles.sidebar}>
-      <div style={styles.brand} onClick={() => navigate("/week")}>
+    <aside style={styles.sidebar} className="tg-sidebar">
+      <div style={styles.brand} className="tg-brand" onClick={() => navigate("/week")}>
         <div style={styles.brandIcon}>
           <img src="/brand/timegrid_mark.png" alt="TimeGrid" style={styles.brandImage} />
         </div>
-        <span style={styles.brandText}>TimeGrid</span>
+        <span style={styles.brandText} className="tg-brand-text">TimeGrid</span>
       </div>
 
-      <nav style={styles.nav}>
+      <nav style={styles.nav} className="tg-nav">
         {navItems.map((item) => {
           const active = pathname.startsWith(item.path);
           const Icon = item.icon;
@@ -80,22 +80,32 @@ export default function Sidebar() {
               type="button"
               onClick={() => navigate(item.path)}
               style={{ ...styles.navItem, ...(active ? styles.navItemActive : {}) }}
+              className="tg-nav-item"
             >
               <Icon active={active} />
-              <span style={{ ...styles.navLabel, ...(active ? styles.navLabelActive : {}) }}>{item.label}</span>
+              <span
+                style={{ ...styles.navLabel, ...(active ? styles.navLabelActive : {}) }}
+                className="tg-nav-label"
+              >
+                {item.label}
+              </span>
             </button>
           );
         })}
       </nav>
 
-      <div style={styles.bottom}>
+      <div style={styles.bottom} className="tg-bottom">
         <button
           type="button"
           onClick={() => navigate("/settings")}
           style={{ ...styles.navItem, ...(pathname.startsWith("/settings") ? styles.navItemActive : {}) }}
+          className="tg-nav-item"
         >
           <SettingsIcon active={pathname.startsWith("/settings")} />
-          <span style={{ ...styles.navLabel, ...(pathname.startsWith("/settings") ? styles.navLabelActive : {}) }}>
+          <span
+            style={{ ...styles.navLabel, ...(pathname.startsWith("/settings") ? styles.navLabelActive : {}) }}
+            className="tg-nav-label"
+          >
             Settings
           </span>
         </button>

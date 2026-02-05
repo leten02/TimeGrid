@@ -9,7 +9,7 @@ const DAYS_SUN = ["일", "월", "화", "수", "목", "금", "토"];
 const DAYS_MON = ["월", "화", "수", "목", "금", "토", "일"];
 
 // UI 파라미터(설정 기본값)
-const DEFAULT_START_HOUR = 6;      // 그리드 시작 시간
+const DEFAULT_START_HOUR = 0;      // 그리드 시작 시간
 const DEFAULT_END_HOUR = 24;       // 그리드 끝 시간
 const DEFAULT_PX_PER_MIN = 1.2;    // 1분당 픽셀 (1.2면 60분=72px)
 const DEFAULT_DAY_COL_WIDTH = 160; // day column 폭(중앙은 flex라 실제로는 min 폭)
@@ -194,12 +194,15 @@ export default function Week() {
   ]);
   const [focusSeconds, setFocusSeconds] = useState(settings.focus_duration * 60);
   const [focusRunning, setFocusRunning] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 900);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [dragOverrides, setDragOverrides] = useState({});
   const dragOverridesRef = useRef({});
   const dragBlockRef = useRef(null);
   const dragMovedRef = useRef(false);
   const draggingIdRef = useRef(null);
   const dragJustEndedRef = useRef(0);
+  const chatInputRef = useRef(null);
 
   // modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -220,17 +223,31 @@ export default function Week() {
   const autoScrollDoneRef = useRef(false);
   const chatScrollRef = useRef(null);
 
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 900);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileChatOpen(false);
+    }
+  }, [isMobile]);
+
   const dayLabels = useMemo(
     () => (settings.week_start_day === "monday" ? DAYS_MON : DAYS_SUN),
     [settings.week_start_day],
   );
 
   const compactMode = settings.compact_mode;
-  const pxPerMin = compactMode ? 1.05 : DEFAULT_PX_PER_MIN;
-  const dayColWidth = compactMode ? 140 : DEFAULT_DAY_COL_WIDTH;
-  const gridGap = compactMode ? 6 : 8;
-  const rowPadding = compactMode ? 10 : 14;
-  const headerPadding = compactMode ? "10px 10px 8px" : "14px 14px 10px";
+  const basePxPerMin = compactMode ? 1.05 : DEFAULT_PX_PER_MIN;
+  const pxPerMin = isMobile ? basePxPerMin * 0.85 : basePxPerMin;
+  const dayColWidth = isMobile ? 96 : (compactMode ? 140 : DEFAULT_DAY_COL_WIDTH);
+  const gridGap = isMobile ? 6 : (compactMode ? 6 : 8);
+  const rowPadding = isMobile ? 10 : (compactMode ? 10 : 14);
+  const headerPadding = isMobile ? "10px 10px 8px" : (compactMode ? "10px 10px 8px" : "14px 14px 10px");
+  const timeColWidth = isMobile ? 46 : 64;
 
   const gridStartMinSetting = parseTimeToMinutes(settings.grid_start, DEFAULT_START_HOUR * 60);
   const rawGridEndMin = parseTimeToMinutes(settings.grid_end, DEFAULT_END_HOUR * 60);
@@ -694,6 +711,64 @@ export default function Week() {
 
   const dayLabelForDate = useMemo(() => DAYS_SUN[viewDate.getDay()], [viewDate]);
 
+  const aiPanelContent = (
+    <>
+      <div style={styles.panelHeader}>
+        <span style={styles.dotPurple} />
+        <span style={styles.panelTitle}>AI 스케줄 도우미</span>
+        <span style={styles.panelBadge}>{chatLoading ? "응답 중" : "대기 중"}</span>
+      </div>
+      <div style={styles.aiBody} ref={chatScrollRef}>
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            style={{ ...styles.aiBubble, ...(m.role === "user" ? styles.aiBubbleUser : {}) }}
+          >
+            {m.text}
+          </div>
+        ))}
+        {chatLoading && (
+          <div style={styles.aiBubble}>
+            <span className="tg-typing" aria-label="답변 생성 중">
+              <span className="tg-typing-dot" />
+              <span className="tg-typing-dot" />
+              <span className="tg-typing-dot" />
+            </span>
+          </div>
+        )}
+      </div>
+      <div style={styles.aiInputRow}>
+        <textarea
+          ref={chatInputRef}
+          className="tg-ai-input"
+          style={styles.aiTextarea}
+          value={chatInput}
+          onChange={(e) => setChatInput(e.target.value)}
+          onKeyDown={handleChatKeyDown}
+          placeholder="메시지를 입력하세요..."
+          disabled={chatLoading}
+          rows={1}
+        />
+        <button
+          style={{ ...styles.aiSendIcon, ...(chatLoading ? styles.chatSendDisabled : {}) }}
+          onClick={sendChat}
+          disabled={chatLoading}
+          aria-label="전송"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M4 12l16-7-6 16-3-7-7-2z"
+              stroke="#64748b"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div style={styles.aiHint}>Enter 전송 · Shift+Enter 줄바꿈</div>
+    </>
+  );
+
   const eventsByDate = useMemo(() => {
     const map = new Map();
     blocks.forEach((b) => {
@@ -741,7 +816,7 @@ export default function Week() {
   }, [activeView, dayStart.getTime(), dayEnd.getTime(), weekStart.getTime(), weekEnd.getTime(), todayLine, nowTick]);
 
   return (
-    <div style={styles.shell}>
+    <div style={styles.shell} className="tg-shell">
       <div style={styles.shellBackdrop} aria-hidden="true" />
       <style>{`
         .tg-card { transition: transform 0.18s ease, box-shadow 0.18s ease; }
@@ -750,19 +825,58 @@ export default function Week() {
         .tg-pill:hover { transform: translateY(-1px); box-shadow: 0 10px 20px rgba(15,23,42,0.12); }
         .tg-daycol { transition: box-shadow 0.2s ease, transform 0.2s ease; }
         .tg-daycol:hover { box-shadow: 0 14px 28px rgba(15,23,42,0.08); }
+        .tg-ai-input::placeholder { color: rgba(100,116,139,0.7); }
+        .tg-typing { display: inline-flex; align-items: center; gap: 6px; }
+        .tg-typing-dot { width: 6px; height: 6px; border-radius: 999px; background: #94a3b8; opacity: 0.6; animation: tg-bounce 1.2s infinite ease-in-out; }
+        .tg-typing-dot:nth-child(2) { animation-delay: 0.15s; }
+        .tg-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+        @keyframes tg-bounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.5; } 40% { transform: translateY(-4px); opacity: 1; } }
+        @media (max-width: 900px) {
+          .tg-shell {
+            grid-template-columns: 1fr !important;
+            grid-template-rows: auto auto auto !important;
+            height: auto !important;
+            min-height: 100vh !important;
+          }
+          .tg-main {
+            padding: 16px !important;
+          }
+          .tg-header {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 12px !important;
+          }
+          .tg-header-right {
+            width: 100% !important;
+            justify-content: space-between !important;
+            flex-wrap: wrap !important;
+          }
+          .tg-grid {
+            border-radius: 16px !important;
+          }
+          .tg-right {
+            border-left: none !important;
+            border-top: 1px solid rgba(15,23,42,0.08) !important;
+            padding: 16px !important;
+            height: auto !important;
+          }
+          .tg-ai-panel {
+            min-height: 260px !important;
+          }
+        }
       `}</style>
       <Sidebar />
 
       {/* Main */}
-      <main style={styles.main}>
+      <main style={styles.main} className="tg-main">
         {/* Header */}
-        <div style={styles.header}>
+        <div style={styles.header} className="tg-header">
           <div>
             <div style={styles.hTitle}>{headerTitle}</div>
             <div style={styles.hSub}>{headerSub}</div>
           </div>
 
-          <div style={styles.headerRight}>
+          <div style={styles.headerRight} className="tg-header-right">
             <div style={styles.navGroup}>
               <button style={styles.iconBtn} onClick={() => shiftView(-1)} aria-label="이전">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -800,11 +914,11 @@ export default function Week() {
         </div>
 
         {/* Grid */}
-        <div style={styles.gridWrap} ref={gridWrapRef}>
+        <div style={styles.gridWrap} ref={gridWrapRef} className="tg-grid">
           {activeView === "week" && (
             <>
               <div style={{ ...styles.dayHeaderRow, gap: gridGap, padding: headerPadding }}>
-                <div style={{ width: 64, display: "grid", placeItems: "center", fontSize: 12, opacity: 0.7 }}>
+                <div style={{ width: timeColWidth, display: "grid", placeItems: "center", fontSize: 12, opacity: 0.7 }}>
                   시간
                 </div>
                 <div style={{ ...styles.dayHeaderCols, gap: gridGap }}>
@@ -814,7 +928,12 @@ export default function Week() {
                     return (
                       <div
                         key={`${d}-${idx}`}
-                        style={{ ...styles.dayHeaderCell, ...(isToday ? styles.dayHeaderToday : {}), minWidth: dayColWidth }}
+                        style={{
+                          ...styles.dayHeaderCell,
+                          ...(isToday ? styles.dayHeaderToday : {}),
+                          minWidth: dayColWidth,
+                          padding: isMobile ? "6px 6px" : styles.dayHeaderCell.padding,
+                        }}
                       >
                         <div style={{ fontWeight: 600 }}>{d}</div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>{fmtDate(date)}</div>
@@ -825,7 +944,7 @@ export default function Week() {
               </div>
 
               <div style={{ ...styles.bodyRow, gap: gridGap, padding: rowPadding }}>
-                <div style={{ width: 64, position: "relative" }}>
+                <div style={{ width: timeColWidth, position: "relative" }}>
                   {Array.from({ length: hourCount }).map((_, i) => {
                     const hour = displayStartHour + i;
                     const top = (hour * 60 - gridStartMin) * pxPerMin;
@@ -1309,7 +1428,7 @@ export default function Week() {
       </main>
 
       {/* Right panel */}
-      <aside style={styles.right}>
+      <aside style={styles.right} className="tg-right">
         <button
           style={{ ...styles.blockModeButton, ...(blockMode ? styles.blockModeButtonActive : {}) }}
           onClick={() => setBlockMode((v) => !v)}
@@ -1377,40 +1496,44 @@ export default function Week() {
           </div>
         </div>
 
-        <div style={{ ...styles.panelCard, ...styles.aiPanelCard }}>
-          <div style={styles.panelHeader}>
-            <span style={styles.dotPurple} />
-            <span style={styles.panelTitle}>AI 스케줄 도우미</span>
-            <span style={styles.panelBadge}>{chatLoading ? "응답 중" : "대기 중"}</span>
+        {!isMobile && (
+          <div style={{ ...styles.panelCard, ...styles.aiPanelCard }} className="tg-ai-panel">
+            {aiPanelContent}
           </div>
-          <div style={styles.aiBody} ref={chatScrollRef}>
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                style={{ ...styles.aiBubble, ...(m.role === "user" ? styles.aiBubbleUser : {}) }}
-              >
-                {m.text}
-              </div>
-            ))}
-          </div>
-          <textarea
-            style={styles.aiTextarea}
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={handleChatKeyDown}
-            placeholder="AI에게 스케줄 관련 질문을 하세요..."
-            disabled={chatLoading}
-          />
-          <button
-            style={{ ...styles.aiSend, ...(chatLoading ? styles.chatSendDisabled : {}) }}
-            onClick={sendChat}
-            disabled={chatLoading}
-          >
-            전송
-          </button>
-          <div style={styles.aiHint}>Enter 전송 · Shift+Enter 줄바꿈</div>
-        </div>
+        )}
       </aside>
+
+      {isMobile && (
+        <>
+          <button
+            type="button"
+            style={styles.mobileChatFab}
+            onClick={() => setMobileChatOpen(true)}
+            aria-label="AI 채팅 열기"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M4 12l16-7-6 16-3-7-7-2z" stroke="#0f172a" strokeWidth="1.8" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {mobileChatOpen && (
+            <div style={styles.mobileChatOverlay} onClick={() => setMobileChatOpen(false)}>
+              <div style={styles.mobileChatSheet} onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  style={styles.mobileChatClose}
+                  onClick={() => setMobileChatOpen(false)}
+                  aria-label="닫기"
+                >
+                  ✕
+                </button>
+                <div style={styles.mobileChatPanel}>
+                  {aiPanelContent}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       <BlockModal
         open={modalOpen}
@@ -1700,7 +1823,7 @@ const styles = {
   },
   timerRow: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "center",
     gap: 12,
     width: "100%",
@@ -1742,7 +1865,14 @@ const styles = {
     background: "#94a3b8",
     opacity: 0.7,
   },
-  timerActions: { display: "flex", gap: 12, alignItems: "center", width: "100%", maxWidth: "100%" },
+  timerActions: {
+    display: "flex",
+    gap: 12,
+    alignItems: "stretch",
+    width: "100%",
+    maxWidth: "100%",
+    height: 48,
+  },
   startBtn: {
     flex: 1,
     padding: "10px 18px",
@@ -1780,6 +1910,7 @@ const styles = {
     display: "grid",
     placeItems: "center",
     lineHeight: 1,
+    padding: 0,
     flexShrink: 0,
   },
   aiBody: {
@@ -1787,7 +1918,9 @@ const styles = {
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    display: "grid",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
     gap: 10,
   },
   aiBubble: {
@@ -1796,30 +1929,49 @@ const styles = {
     borderRadius: 14,
     fontSize: 12,
     lineHeight: 1.5,
+    maxWidth: "88%",
+    width: "fit-content",
+    display: "inline-block",
+    boxSizing: "border-box",
   },
   aiBubbleUser: {
     background: "rgba(59,130,246,0.12)",
     border: "1px solid rgba(59,130,246,0.25)",
     alignSelf: "flex-end",
   },
-  aiTextarea: {
+  aiInputRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
     width: "100%",
-    minHeight: 80,
-    border: "1px solid rgba(15,23,42,0.12)",
-    borderRadius: 14,
-    padding: "10px 12px",
-    fontSize: 12,
-    resize: "none",
   },
-  aiSend: {
-    width: "100%",
-    borderRadius: 14,
+  aiTextarea: {
+    flex: 1,
+    height: 48,
+    border: "1px solid rgba(15,23,42,0.08)",
+    borderRadius: 999,
+    padding: "12px 18px",
+    fontSize: 12,
+    lineHeight: "22px",
+    resize: "none",
+    background: "#f1f5f9",
+    color: "#0f172a",
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  aiSendIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
     border: "none",
-    background: "#0f172a",
-    color: "white",
-    fontWeight: 700,
+    background: "#e2e8f0",
     cursor: "pointer",
-    padding: "10px 12px",
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+    boxShadow: "0 8px 16px rgba(15,23,42,0.12)",
+    padding: 0,
+    lineHeight: 1,
   },
   chatSendDisabled: {
     opacity: 0.65,
@@ -1829,6 +1981,63 @@ const styles = {
     fontSize: 11,
     color: "#94a3b8",
     textAlign: "center",
+  },
+  mobileChatFab: {
+    position: "fixed",
+    right: 16,
+    bottom: 18,
+    width: 52,
+    height: 52,
+    borderRadius: 999,
+    border: "1px solid rgba(15,23,42,0.12)",
+    background: "white",
+    boxShadow: "0 12px 24px rgba(15,23,42,0.18)",
+    display: "grid",
+    placeItems: "center",
+    cursor: "pointer",
+    zIndex: 30,
+  },
+  mobileChatOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15,23,42,0.35)",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    zIndex: 40,
+    padding: 12,
+  },
+  mobileChatSheet: {
+    width: "100%",
+    maxWidth: 520,
+    background: "white",
+    borderRadius: 20,
+    padding: 12,
+    boxShadow: "0 20px 40px rgba(15,23,42,0.2)",
+    position: "relative",
+    maxHeight: "80vh",
+    display: "flex",
+  },
+  mobileChatPanel: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  },
+  mobileChatClose: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    border: "1px solid rgba(15,23,42,0.12)",
+    background: "white",
+    display: "grid",
+    placeItems: "center",
+    cursor: "pointer",
+    fontSize: 14,
+    color: "#0f172a",
   },
   monthWrap: {
     display: "grid",
